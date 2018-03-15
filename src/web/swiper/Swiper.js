@@ -2,7 +2,7 @@
 import React, { Component }  from 'react';
 import PropTypes from 'prop-types';
 /*
-	.wya-swiper-content-child的样式
+	.rc-swiper-content-child的样式
  */
 const childStyle = {
 	height: '100%',
@@ -38,7 +38,7 @@ class Swiper extends Component {
 			currentTransLateX,
 			// 当前的正在展示的序列号
 			currentIndex,
-			// 父标签
+			// 父容器
 			contentStyle: {				
 				width: width,
 				height: '100%',
@@ -63,15 +63,20 @@ class Swiper extends Component {
 	}
 	// -----上面是生命周期的操作
 	// 点击事件
+	// arg 变量就是 当前的currentIndex 减去 下一个的将要被展示的 currentIndex
+	// 这里为什么是1 ， 因为他要向左移动一个单位，当前的currentIndex 
+	// 减去 下一个的将要被展示的 currentIndex 所以是正1
 	preSlide = () => {
 		let currentIndex = this.state.currentIndex;
 		let len = this.state.data.length;
+		let arg =  1; 
+
 		if (!this.clickSafe.allowClicked) {
 			return;
 		} else {
 			this.clickSafe.allowClicked = false;
 		}
-		currentIndex --;		
+		currentIndex -= arg;		
 		const callback = (currentIndex, len) => {		
 			if (currentIndex === -1) {	
 				currentIndex = len - 1;						
@@ -82,18 +87,21 @@ class Swiper extends Component {
 			this.getTargetLeft(currentIndex);				
 		}
 		this.setState({ currentIndex }, () => {
-			this.animateSlide(1, callback);
+			this.animateSlide(arg, callback);
 		});
 	}
 	nextSlide = () => {
 		let currentIndex = this.state.currentIndex;
 		let len = this.state.data.length;
+		let arg =  -1; 
 		if (!this.clickSafe.allowClicked) {
 			return;
 		} else {
 			this.clickSafe.allowClicked = false;
 		}
-		currentIndex ++;
+		currentIndex -= arg;
+		// 这里的currentIndex 就是下一个将要被展示出的slide的序号了，
+		// 不过加了 nextIdnex ，这个currentIndex 叫做 targerIndex 更合适
 		const callback = (currentIndex, len) => {	
 			if (currentIndex === len) {	
 				currentIndex = 0;							
@@ -101,39 +109,78 @@ class Swiper extends Component {
 			this.getTargetLeft(currentIndex);
 		};
 		this.setState({ currentIndex }, () => {
-			this.animateSlide(-1, callback);
+			this.animateSlide(arg, callback);
 		});
 	}
 	// 父容器滚动
 	// 因为父容器的translateX都是小于等于0的，
 	// arg 为 1，那么就向左走， 为 -1 就向右走。
+	// nextIndex 是下一个将要被展示的slide
+	// 
+	// 这个 nextIndex 是个很有意思的东西， 
+	// 	当 arg = -1 和 arg = 1的的时候，nextIndex 都是等于 currentIndex 的，
+	// 	如果 arg 不等于 1 或者 -1， 那么 就是下一个sldie的index了。 
 	animateSlide(arg, callback){
+		let len = this.state.data.length;
+		let currentIndex = this.state.currentIndex;
+
+		// 这个 nextIndex 是处理 多个单位位移的 精髓所在
+		let nextIndex = currentIndex + arg - (arg / Math.abs(arg));
+
 		let targetTranslateX = 
 				this.state.currentTransLateX + arg * this.state.currentWidth;
 		const  doet = () => {
 			let currentTransLateX = this.state.currentTransLateX;
 			let contentStyle = { ...this.state.contentStyle };
-
+			let nextTransLateX = 0;
 			let step = (targetTranslateX - currentTransLateX) / 8;
 			step = arg > 0 ? Math.ceil(step) : Math.floor(step);
-			currentTransLateX += step;
+			nextTransLateX = currentTransLateX + step;
+			// 下面这个if还是要多加个判断，用来处理 decorator 的点击情况。
 			if (
 				// 点击右边的按钮
 				currentTransLateX > targetTranslateX && arg < 0
 				// 点击左边的按钮
 				|| currentTransLateX < targetTranslateX && arg > 0
-			) {				
-				contentStyle.transform =  `translate3d(${currentTransLateX}px, 0, 0)`;
-				this.setState({
-					currentTransLateX,
-					contentStyle
-				});
+			) {			
+				// console.log(arg);
+				if (Math.abs(arg) > 1) {
+					// 就是在这里了。处理位移多个单位的情况。这里是最坑的情况了，很绕
+					// 在多个单位位移中， currentIndex 叫做 targetIndex 更为合适。
+					// 所以我们要引入，nextIndex, 用来处理临界情况
+					//  currentTransLateX < nextIndex.left < nextTransLateX ,这就是临界
+					console.log(Math.abs(currentTransLateX) > this.state.slidesLeft[nextIndex], this.state.slidesLeft[nextIndex] > Math.abs(nextTransLateX));
+					console.log(nextIndex);
+					if ( Math.abs(currentTransLateX) < this.state.slidesLeft[nextIndex] 
+						&& this.state.slidesLeft[nextIndex] < Math.abs(nextTransLateX) 
+						||  Math.abs(currentTransLateX) > this.state.slidesLeft[nextIndex] 
+						&& this.state.slidesLeft[nextIndex] > Math.abs(nextTransLateX) 
+					) {
+						// 临界进入这里
+						this.getTargetLeft(nextIndex);
+						nextIndex -= (arg / Math.abs(arg));
+
+					} else {
+						contentStyle.transform =  `translate3d(${nextTransLateX}px, 0, 0)`;
+						this.setState({
+							currentTransLateX: nextTransLateX,
+							contentStyle
+						});
+					}
+					
+				} else {
+					// 处理左右点击按钮，只位移一个单位的 情况。
+					contentStyle.transform =  `translate3d(${nextTransLateX}px, 0, 0)`;
+					this.setState({
+						currentTransLateX: nextTransLateX,
+						contentStyle
+					});
+				}
 				window.requestAnimationFrame(doet);
 			} else {
 				// 这里要对 currentIndex 做判断，当 currentIndex === length  时，
-				// 重新设置 currentIndex, 并且执行 getTargetLeft()
-				let len = this.state.data.length;
-				let currentIndex = this.state.currentIndex;
+				// 重新设置 currentIndex , 并且执行 getTargetLeft()
+			
 				this.clickSafe.allowClicked = true;
 				if ( currentIndex === len && arg < 0 ) {
 					currentIndex = 0;
@@ -180,8 +227,27 @@ class Swiper extends Component {
 		contentStyle.transform =  `translate3d(${currentTransLateX}px, 0, 0)`,
 		this.setState({ slidesLeft, currentTransLateX, contentStyle, currentIndex });
 	}
+	// 点击不同索引的li，进行相应的位移。
 	handleDecoratorClick = (num) => {
-		console.log(num);
+		// 不应该这里setState({currentIndex: num});
+		let currentIndex = this.state.currentIndex;
+		let arg = currentIndex - num;
+		if (!this.clickSafe.allowClicked) {
+			return;
+		} else {
+			this.clickSafe.allowClicked = false;
+		}
+		currentIndex -= arg;
+		// 这里的currentIndex 就是下一个将要被展示出的slide的序号了
+		const callback = (currentIndex, len) => {	
+			if (currentIndex === len) {	
+				currentIndex = 0;							
+			}
+			this.getTargetLeft(currentIndex);
+		};
+		this.setState({ currentIndex: num }, () => {
+			this.animateSlide(arg, callback);
+		});
 	}
 	getChildStyles(index) {
 		let width =  this.state.currentWidth + 'px';
@@ -206,7 +272,7 @@ class Swiper extends Component {
 		};
 	}
 	getStyleTagStyles() {
-		return `.wya-swiper-decorator > li {
+		return `.rc-swiper-decorator > li {
 							width: 24px; 
 							height: 24px;
 							border: 1px solid rgba(255, 255, 255, .5);
@@ -214,7 +280,7 @@ class Swiper extends Component {
 							margin: 0 10px;
 							background: rgba(255, 255, 255, .5)
 						}
-				.wya-swiper-decorator li.wya-swiper-decorator-active {
+				.rc-swiper-decorator li.rc-swiper-decorator-active {
 					background: rgba(22, 244, 67, .8);
 				}
 						`;
@@ -251,7 +317,6 @@ class Swiper extends Component {
 	}
 	getDecoratorActiveStyle(i) {
 		let currentIndex = this.state.currentIndex;
-		console.log(i, currentIndex);
 		if (i === currentIndex) {
 			return true;
 		} else return false;
@@ -260,7 +325,7 @@ class Swiper extends Component {
 		let imgs = this.state.data.map((ele, i) => {
 			return (
 				<div 
-					className="wya-swiper-content-child"  
+					className="rc-swiper-content-child"  
 					style={{ ...this.getChildStyles(i), left: this.state.slidesLeft[i] + 'px' }} 
 					key={ele.src}
 				>
@@ -272,10 +337,14 @@ class Swiper extends Component {
 		});
 		let decorator = this.props.decorator 
 			? ( <ul 
-				className = "wya-swiper-decorator"
+				className = "rc-swiper-decorator"
 				style={{ ...this.getDecoratorStyle() }}>
 				{this.state.data.map((ele, i) => {
-					return <li key={ele.src + i} className={  this.getDecoratorActiveStyle(i) ? 'wya-swiper-decorator-active' : ''} onClick={() => this.handleDecoratorClick(i)}></li>;
+					return <li 
+						key={ele.src + i} 
+						className={  this.getDecoratorActiveStyle(i) ? 'rc-swiper-decorator-active' : ''} 
+						onClick={() => this.handleDecoratorClick(i)}
+					></li>;
 				})
 				}
 				<style
@@ -285,8 +354,8 @@ class Swiper extends Component {
 			</ul>) 
 			: null;
 		return (
-			<div className="wya wya-swiper-container" style={this.props.styles}>
-				<div className="wya-swiper-content" style={{ ...this.state.contentStyle }}>					
+			<div className="rc rc-swiper-container" style={this.props.styles}>
+				<div className="rc-swiper-content" style={{ ...this.state.contentStyle }}>					
 					{ imgs }					
 				</div>
 				{ decorator }
